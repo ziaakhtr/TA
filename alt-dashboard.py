@@ -496,8 +496,10 @@ def run_simulation_step(product, step_idx):
 # ── Landing Page ────────────────────────────────────────────────────────────────
 if st.session_state.get('app_page', 'home') == 'home':
     st.markdown("""<style>section[data-testid="stSidebar"]{display:none} header{display:none} button[kind="primary"]{background:linear-gradient(135deg,#f5d17c,#e8b84b)!important;color:#0e1117!important;font-weight:700!important;font-size:1.1rem!important;padding:8px 48px!important;border-radius:40px!important;border:none!important} button[kind="primary"]:hover{transform:scale(1.04);box-shadow:0 0 24px rgba(245,209,124,0.35)}</style>""", unsafe_allow_html=True)
-    st.markdown("""
+    logo_b64 = __import__("base64").b64encode(open(r"D:\Zia\logo_cmu.png","rb").read()).decode()
+    st.markdown(f"""
     <div class="hero-container">
+        <img src="data:image/png;base64,{logo_b64}" width="220" style="display:block;margin:0 auto 16px">
         <div class="hero-title">Sistem Pendukung<br>Keputusan Produksi</div>
         <div class="hero-subtitle">PT CIPTA MORTAR UTAMA</div>
     </div>
@@ -515,7 +517,7 @@ st.markdown("""<style>section[data-testid="stSidebar"]{display:flex!important} h
 
 # ── Load data ───────────────────────────────────────────────────────────────────
 st.markdown("<p style='text-align:center'><img src='data:image/png;base64," + __import__("base64").b64encode(open(r"D:\Zia\logo_cmu.png","rb").read()).decode() + "' width='280' style='display:inline-block'></p>", unsafe_allow_html=True)
-st.markdown("<p style='text-align:center;color:#f0f4ff;font-size:2.2rem;font-weight:700;margin-top:8px;margin-bottom:0'>Demand Forecast Dashboard</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#f0f4ff;font-size:2.2rem;font-weight:700;margin-top:8px;margin-bottom:0'>Sistem Pendukung Keputusan Produksi</p>", unsafe_allow_html=True)
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Data file not found: `{DATA_PATH}`.")
@@ -654,7 +656,7 @@ def get_best_model(product):
 # ── Tabs ────────────────────────────────────────────────────────────────────────
 
 # ── Tabs ────────────────────────────────────────────────────────────────────────
-tab_forecast, tab_capacity, tab_performance = st.tabs(["📊 Forecast", "🏭 Capacity Planning", "📈 Model Performance"])
+tab_forecast, tab_capacity, tab_performance = st.tabs(["📊 Forecast", "🏭 Production Shift Planning", "📈 Model Performance"])
 
 # ── FORECAST TAB ────────────────────────────────────────────────────────────────
 with tab_forecast:
