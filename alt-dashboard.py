@@ -514,7 +514,8 @@ if st.session_state.get('app_page', 'home') == 'home':
 st.markdown("""<style>section[data-testid="stSidebar"]{display:flex!important} header{display:block!important}</style>""", unsafe_allow_html=True)
 
 # ── Load data ───────────────────────────────────────────────────────────────────
-st.title("Demand Forecast Dashboard")
+st.markdown("<p style='text-align:center'><img src='data:image/png;base64," + __import__("base64").b64encode(open(r"D:\Zia\logo_cmu.png","rb").read()).decode() + "' width='280' style='display:inline-block'></p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;color:#f0f4ff;font-size:2.2rem;font-weight:700;margin-top:8px;margin-bottom:0'>Demand Forecast Dashboard</p>", unsafe_allow_html=True)
 
 if not os.path.exists(DATA_PATH):
     st.error(f"Data file not found: `{DATA_PATH}`.")
