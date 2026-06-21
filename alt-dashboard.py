@@ -188,8 +188,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Fixed paths ─────────────────────────────────────────────────────────────────
-DATA_PATH   = r"D:\Zia\final_ml_ready.csv"
-FEATURE_EXOG = ['is_lebaran_window', 'is_year_end', 'fc_error_1', 'fc_acc_1', 'usd_change_rate']
+DATA_PATH   = "final_ml_ready.csv"
+FEATURE_EXOG = ['is_lebaran_window', 'is_year_end', 'usd_change_rate']
 FEATURE_COLS = [
     "lag_1", "lag_2", "lag_3", "lag_6", "lag_12",
     "roll_mean_3", "roll_mean_6", "roll_std_3",
@@ -257,6 +257,12 @@ def count_extra_shifts(df_all, target_dates, capacity=1320000):
     monthly_totals['extra_shift_needed'] = monthly_totals['total_forecast'] > capacity
     return monthly_totals
 
+def get_step_params(step_idx):
+    if step_idx == 12:
+        return pd.Timestamp('2026-03-01'), [pd.Timestamp('2026-04-01')]
+    train_end = pd.Timestamp('2025-02-01') + pd.DateOffset(months=step_idx - 1)
+    return train_end, [train_end + pd.DateOffset(months=i) for i in range(1, 4)]
+
 # ── Loaders ─────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_csv(path):
@@ -268,10 +274,10 @@ def run_simulation_step(product, step_idx):
     df_p = df_all[df_all['product'] == product].copy().sort_values("date").reset_index(drop=True)
     df_p = df_p[df_p['date'] >= '2022-01-01']
 
-    train_end = pd.Timestamp('2025-02-01') + pd.DateOffset(months=step_idx - 1)
+    train_end, pred_dates = get_step_params(step_idx)
     train_df = df_p[(df_p['date'] >= '2022-01-01') & (df_p['date'] <= train_end)]
 
-    pred_dates = [train_end + pd.DateOffset(months=i) for i in range(1, 4)]
+    n_pred = len(pred_dates)
 
     pred_rows = []
     for dt in pred_dates:
@@ -312,7 +318,7 @@ def run_simulation_step(product, step_idx):
     models_out = {}
 
     # ── ARIMAX ──
-    pred_vals_arimax = np.full(3, np.nan)
+    pred_vals_arimax = np.full(n_pred, np.nan)
     try:
         train_ari = train_df[np.isfinite(train_df['actual'])]
         if len(train_ari) >= 12:
@@ -329,14 +335,14 @@ def run_simulation_step(product, step_idx):
                     suppress_warnings=True, stepwise=True
                 )
             pred_vals_arimax = model_arimax.predict(
-                n_periods=3, X=pred_exog_df[FEATURE_EXOG]
+                n_periods=n_pred, X=pred_exog_df[FEATURE_EXOG]
             ).values
     except Exception:
         pass
 
     pred_arr = np.array(pred_vals_arimax)
-    ape_arr = np.full(3, np.nan)
-    for i in range(3):
+    ape_arr = np.full(n_pred, np.nan)
+    for i in range(n_pred):
         if valid[i]:
             ape_arr[i] = abs((actual_arr[i] - pred_arr[i]) / actual_arr[i]) * 100
 
@@ -370,7 +376,7 @@ def run_simulation_step(product, step_idx):
                 eff_actuals = list(y_train_ml)
                 eff_forecasts = list(eff_forecasts_init)
                 ml_preds = []
-                for mi in range(3):
+                for mi in range(n_pred):
                     raw_match = df_p[df_p['date'] == pred_dates[mi]]
                     if not raw_match.empty:
                         known_row = raw_match.iloc[0]
@@ -392,8 +398,8 @@ def run_simulation_step(product, step_idx):
                     eff_forecasts.append(fc_val if np.isfinite(fc_val) else pred)
 
                 ml_pred_arr = np.array(ml_preds)
-                ml_ape = np.full(3, np.nan)
-                for i in range(3):
+                ml_ape = np.full(n_pred, np.nan)
+                for i in range(n_pred):
                     if valid[i]:
                         ml_ape[i] = abs((actual_arr[i] - ml_pred_arr[i]) / actual_arr[i]) * 100
                 models_out[ml_name] = {
@@ -406,22 +412,22 @@ def run_simulation_step(product, step_idx):
                 }
             except Exception:
                 models_out[ml_name] = {
-                    'pred_vals': np.full(3, np.nan),
+                    'pred_vals': np.full(n_pred, np.nan),
                     'mape': float('inf'),
                     'mae': float('inf'),
                     'mse': float('inf'),
                     'rmse': float('inf'),
-                    'ape': np.full(3, np.nan),
+                    'ape': np.full(n_pred, np.nan),
                 }
     else:
         for ml_name, _ in ml_configs:
             models_out[ml_name] = {
-                'pred_vals': np.full(3, np.nan),
+                'pred_vals': np.full(n_pred, np.nan),
                 'mape': float('inf'),
                 'mae': float('inf'),
                 'mse': float('inf'),
                 'rmse': float('inf'),
-                'ape': np.full(3, np.nan),
+                'ape': np.full(n_pred, np.nan),
             }
 
     # ── Prophet ──
@@ -437,7 +443,7 @@ def run_simulation_step(product, step_idx):
             eff_actuals = list(prophet_df['y'].values)
             eff_forecasts = list(train_df.loc[prophet_df.index, 'forecast'].values)
             prophet_preds = []
-            for mi in range(3):
+            for mi in range(n_pred):
                 raw_match = df_p[df_p['date'] == pred_dates[mi]]
                 if not raw_match.empty:
                     known_row = raw_match.iloc[0]
@@ -461,8 +467,8 @@ def run_simulation_step(product, step_idx):
                 eff_forecasts.append(fc_val if np.isfinite(fc_val) else pred)
 
             pred_vals_prophet = np.array(prophet_preds)
-            prophet_ape = np.full(3, np.nan)
-            for i in range(3):
+            prophet_ape = np.full(n_pred, np.nan)
+            for i in range(n_pred):
                 if valid[i]:
                     prophet_ape[i] = abs((actual_arr[i] - pred_vals_prophet[i]) / actual_arr[i]) * 100
             models_out['Prophet'] = {
@@ -477,12 +483,12 @@ def run_simulation_step(product, step_idx):
             raise ValueError(f"Not enough Prophet training data ({len(prophet_df)} rows)")
     except Exception:
         models_out['Prophet'] = {
-            'pred_vals': np.full(3, np.nan),
+            'pred_vals': np.full(n_pred, np.nan),
             'mape': float('inf'),
             'mae': float('inf'),
             'mse': float('inf'),
             'rmse': float('inf'),
-            'ape': np.full(3, np.nan),
+            'ape': np.full(n_pred, np.nan),
         }
 
     return {
@@ -496,7 +502,7 @@ def run_simulation_step(product, step_idx):
 # ── Landing Page ────────────────────────────────────────────────────────────────
 if st.session_state.get('app_page', 'home') == 'home':
     st.markdown("""<style>section[data-testid="stSidebar"]{display:none} header{display:none} button[kind="primary"]{background:linear-gradient(135deg,#f5d17c,#e8b84b)!important;color:#0e1117!important;font-weight:700!important;font-size:1.1rem!important;padding:8px 48px!important;border-radius:40px!important;border:none!important} button[kind="primary"]:hover{transform:scale(1.04);box-shadow:0 0 24px rgba(245,209,124,0.35)}</style>""", unsafe_allow_html=True)
-    logo_b64 = __import__("base64").b64encode(open(r"D:\Zia\logo_cmu.png","rb").read()).decode()
+    logo_b64 = __import__("base64").b64encode(open("logo_cmu.png","rb").read()).decode()
     st.markdown(f"""
     <div class="hero-container">
         <img src="data:image/png;base64,{logo_b64}" width="220" style="display:block;margin:0 auto 16px">
@@ -516,7 +522,7 @@ if st.session_state.get('app_page', 'home') == 'home':
 st.markdown("""<style>section[data-testid="stSidebar"]{display:flex!important} header{display:block!important}</style>""", unsafe_allow_html=True)
 
 # ── Load data ───────────────────────────────────────────────────────────────────
-st.markdown("<p style='text-align:center'><img src='data:image/png;base64," + __import__("base64").b64encode(open(r"D:\Zia\logo_cmu.png","rb").read()).decode() + "' width='280' style='display:inline-block'></p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center'><img src='data:image/png;base64," + __import__("base64").b64encode(open("logo_cmu.png","rb").read()).decode() + "' width='280' style='display:inline-block'></p>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center;color:#f0f4ff;font-size:2.2rem;font-weight:700;margin-top:8px;margin-bottom:0'>Sistem Pendukung Keputusan Produksi</p>", unsafe_allow_html=True)
 
 if not os.path.exists(DATA_PATH):
@@ -549,24 +555,24 @@ with st.sidebar:
         st.markdown("### Simulation ready")
         st.caption("Press Run to start")
     else:
-        st.markdown(f"### Step {st.session_state.sim_step} / 11")
-        st.caption(f"Train: Jan 2022 → {pd.Timestamp('2025-02-01') + pd.DateOffset(months=st.session_state.sim_step - 1):%b %Y}")
+        step_train_end, _ = get_step_params(st.session_state.sim_step)
+        st.markdown(f"### Step {st.session_state.sim_step} / 12")
+        st.caption(f"Train: Jan 2022 → {step_train_end:%b %Y}")
 
     if st.session_state.sim_step == 0:
         run_label = "▶️ Start Simulation"
-    elif st.session_state.sim_step < 11:
+    elif st.session_state.sim_step < 12:
         run_label = "▶️ Run Next Step"
     else:
         run_label = "✅ Complete"
 
-    if st.button(run_label, use_container_width=True, disabled=st.session_state.sim_step >= 11):
+    if st.button(run_label, use_container_width=True, disabled=st.session_state.sim_step >= 12):
         new_step = st.session_state.sim_step + 1
-        train_end = pd.Timestamp('2025-02-01') + pd.DateOffset(months=new_step - 1)
-        pred_dates = [train_end + pd.DateOffset(months=i) for i in range(1, 4)]
+        train_end, pred_dates = get_step_params(new_step)
 
         all_prods = sorted(df_raw["product"].unique())
         step_products = {}
-        progress = st.progress(0, text=f"Training all models for step {new_step}/11...")
+        progress = st.progress(0, text=f"Training all models for step {new_step}/12...")
         for idx, prod in enumerate(all_prods):
             progress.progress((idx + 1) / len(all_prods), text=f"Training {prod} (6 models)...")
             step_products[prod] = run_simulation_step(prod, new_step)
@@ -597,8 +603,7 @@ with st.sidebar:
             current_task = 0
             progress = st.progress(0, text="Running all steps...")
             for si in range(st.session_state.sim_step + 1, 12):
-                train_end = pd.Timestamp('2025-02-01') + pd.DateOffset(months=si - 1)
-                pred_dates = [train_end + pd.DateOffset(months=i) for i in range(1, 4)]
+                train_end, pred_dates = get_step_params(si)
                 step_products = {}
                 for pi, prod in enumerate(all_prods):
                     current_task += 1
@@ -629,7 +634,7 @@ with st.sidebar:
 
 df_prod = df_raw[df_raw["product"] == selected_product].copy().sort_values("date").reset_index(drop=True)
 df_prod = df_prod.dropna(subset=['actual'] + FEATURE_EXOG)
-df_prod = df_prod[df_prod['date'] <= '2026-03-31']
+df_prod = df_prod[df_prod['date'] <= '2026-04-30']
 
 def get_best_model(product):
     if st.session_state.sim_step < 2:
@@ -640,7 +645,7 @@ def get_best_model(product):
         for m in MODELS:
             md = hp['models'].get(m)
             if md is not None:
-                for mi in range(3):
+                for mi in range(len(hp['valid_mask'])):
                     if hp['valid_mask'][mi] and np.isfinite(md['ape'][mi]):
                         model_mapes[m].append(md['ape'][mi])
     best = 'ARIMAX'
@@ -694,7 +699,8 @@ with tab_forecast:
             resolved_mape = None
             resolved_label = "Resolved MAPE"
 
-        m_cols = st.columns([1] * 3 + [1])
+        n_pred_months = len(step_data['pred_dates'])
+        m_cols = st.columns([1] * n_pred_months + [1])
         for i, dt in enumerate(step_data['pred_dates']):
             with m_cols[i]:
                 pred_val = model_data['pred_vals'][i]
@@ -724,7 +730,7 @@ with tab_forecast:
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-        with m_cols[3]:
+        with m_cols[n_pred_months]:
             if resolved_mape is not None and resolved_mape != float('inf'):
                 st.markdown(f"""
                 <div class="fc-mape-card">
@@ -910,7 +916,7 @@ with tab_performance:
         all_models_data = {m: {'preds': [], 'actuals': [], 'baselines': []} for m in MODELS}
         for i in range(st.session_state.sim_step):
             hp = st.session_state.sim_history[i]['products'][selected_product]
-            for mi in range(3):
+            for mi in range(len(hp['valid_mask'])):
                 if hp['valid_mask'][mi]:
                     for m in MODELS:
                         md = hp['models'].get(m)
@@ -993,7 +999,7 @@ with tab_performance:
                             md = hp['models'].get(m)
                             if md is None:
                                 continue
-                            for pmi in range(3):
+                            for pmi in range(len(hp['valid_mask'])):
                                 is_resolved = hp['valid_mask'][pmi]
                                 ape_val = md['ape'][pmi] if is_resolved and not np.isnan(md['ape'][pmi]) else None
                                 d_rows.append({
@@ -1039,7 +1045,7 @@ with tab_performance:
         if steps_done > 0:
             cur_end = st.session_state.sim_history[-1]['train_end'].strftime('%b %Y')
             st.markdown(f"""
-            - **Simulation steps completed:** {steps_done} / 11
+            - **Simulation steps completed:** {steps_done} / 12
             - **Current train window:** Jan 2022 → {cur_end}
             - **Products simulated:** {len(st.session_state.sim_history[-1]['products'])}
             - **Models:** {', '.join(MODELS)}
