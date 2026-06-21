@@ -37,7 +37,7 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2px;
+        margin-bottom: 0;
     }
     .fc-card-month {
         font-size: 0.9rem;
@@ -50,19 +50,25 @@ st.markdown("""
     .fc-card-forecast-label {
         font-size: 0.65rem;
         color: #5a5f7a;
-        margin-top: 1px;
+        margin-top: 0;
     }
     .fc-card-forecast-value {
         font-size: 2rem;
         font-weight: 700;
         color: #f0f4ff;
         line-height: 1.1;
-        margin: 0 0 2px;
+        margin: 0;
+        padding-bottom: 3px;
+        margin-bottom: 3px;
+        border-bottom: 0.5px solid #23263d;
     }
-    .fc-card-divider {
-        border: none;
-        border-top: 1px solid #23263d;
-        margin: 3px 0;
+    .fc-card-actual-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 3px;
+        margin-bottom: 3px;
+        border-bottom: 0.5px solid #23263d;
     }
     .fc-card-target-row {
         display: flex;
@@ -86,6 +92,29 @@ st.markdown("""
     }
     .fc-card-variance.above { background: #1a3328; color: #7cf5a5; }
     .fc-card-variance.below { background: #3d3a1a; color: #f5d17c; }
+
+    .fc-mape-card {
+        background-color: #131626;
+        border-radius: 14px;
+        padding: 70px 22px;
+        border: 1px solid #2a2d45;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .fc-mape-label {
+        font-size: 0.9rem;
+        color: #f0f4ff;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .fc-mape-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #f0f4ff;
+    }
 
     .hero-container {
         display: flex;
@@ -257,8 +286,6 @@ with st.sidebar:
 
     prod_pred = predictions[selected_product]
     st.markdown(f"**Best Model:** {prod_pred['best_model']}")
-    st.markdown(f"**Type:** {prod_pred['type']}")
-    st.markdown(f"**MAPE (H8):** {prod_pred['mape']:.2f}%" if prod_pred['mape'] != float('inf') else "**MAPE:** N/A")
     st.divider()
 
     with st.expander("📂 Data Source", expanded=False):
@@ -288,15 +315,15 @@ with tab_forecast:
     prod_pred = predictions[selected_product]
     pv = prod_pred['pred_vals']
     bv = prod_pred['baseline_vals']
+    av = prod_pred['actual_vals']
 
-    st.markdown(f"**Horizon H8 — {PRED_DATES[0].strftime('%b %Y')} to {PRED_DATES[-1].strftime('%b %Y')}**")
-    st.markdown(f"**Model:** {prod_pred['best_model']}  |  **MAPE:** {prod_pred['mape']:.2f}%")
-
-    cols = st.columns(3)
+    cols = st.columns([1, 1, 1, 1])
     for i, dt in enumerate(PRED_DATES):
         with cols[i]:
             pred_val = pv[i]
+            actual_val = av[i]
             target_val = bv[i]
+            actual_str = f"{actual_val:,.0f}" if not np.isnan(actual_val) else "—"
             target_str = f"{target_val:,.0f}" if not np.isnan(target_val) else "—"
             diff = pred_val - target_val if not (np.isnan(target_val) or np.isnan(pred_val)) else 0
             diff_pct = (diff / target_val * 100) if target_val != 0 and not np.isnan(target_val) and not np.isnan(pred_val) else 0
@@ -304,6 +331,11 @@ with tab_forecast:
             status = "▲" if above else "▼"
             vclass = "above" if above else "below"
             vtext = f"+{diff_pct:.1f}%" if above else f"{diff_pct:.1f}%"
+            fc_diff = pred_val - actual_val if not (np.isnan(actual_val) or np.isnan(pred_val)) else 0
+            fc_diff_pct = (fc_diff / actual_val * 100) if actual_val != 0 and not np.isnan(actual_val) and not np.isnan(pred_val) else 0
+            fc_above = fc_diff >= 0
+            fc_vclass = "above" if fc_above else "below"
+            fc_vtext = f"+{fc_diff_pct:.1f}%" if fc_above else f"{fc_diff_pct:.1f}%"
             st.markdown(f"""
             <div class="fc-card">
                 <div class="fc-card-header">
@@ -312,7 +344,13 @@ with tab_forecast:
                 </div>
                 <div class="fc-card-forecast-label">Forecast</div>
                 <div class="fc-card-forecast-value">{pred_val:,.0f}</div>
-                <hr class="fc-card-divider">
+                <div class="fc-card-actual-row">
+                    <div>
+                        <div class="fc-card-target-label">Actual</div>
+                        <div class="fc-card-target-value" style="color:#7c9ef5">{actual_str}</div>
+                    </div>
+                    <span class="fc-card-variance {fc_vclass}">{fc_vtext}</span>
+                </div>
                 <div class="fc-card-target-row">
                     <div>
                         <div class="fc-card-target-label">Sales Target</div>
@@ -322,6 +360,13 @@ with tab_forecast:
                 </div>
             </div>
             """, unsafe_allow_html=True)
+    with cols[3]:
+        st.markdown(f"""
+        <div class="fc-mape-card">
+            <div class="fc-mape-label">Walk-Forward MAPE (H8)</div>
+            <div class="fc-mape-value">{prod_pred['mape']:.1f}%</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Chart
     df_chart_train = df_prod[(df_prod['date'] >= TRAIN_START) & (df_prod['date'] <= TRAIN_END)].copy()
@@ -344,6 +389,15 @@ with tab_forecast:
         name="Sales Target", mode="lines+markers",
         line=dict(color="#f5cc7c", width=1.5, dash="dot"),
         marker=dict(size=[4] + [6] * 3, symbol=["circle"] + ["diamond"] * 3)
+    ))
+
+    actual_line_dates = [last_actual_date] + list(PRED_DATES)
+    actual_line_vals = [last_actual_val] + list(av)
+    fig.add_trace(go.Scatter(
+        x=actual_line_dates, y=actual_line_vals,
+        name="Actual (H8)", mode="lines+markers",
+        line=dict(color="#7c9ef5", width=1.5, dash="dash"),
+        marker=dict(size=[4] + [8] * 3, symbol=["circle"] + ["diamond"] * 3)
     ))
 
     model_line_dates = [last_actual_date] + list(PRED_DATES)
