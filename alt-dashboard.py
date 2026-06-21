@@ -282,11 +282,10 @@ with st.sidebar:
         st.session_state.app_page = 'home'
         st.rerun()
     selected_product = st.selectbox("Select product", products_sorted)
-    st.divider()
-
+    st.markdown("<hr style='border: none; border-top: 1px solid #AAAAAA; margin: 2px 0 16px;'>", unsafe_allow_html=True)
     prod_pred = predictions[selected_product]
     st.markdown(f"**Best Model:** {prod_pred['best_model']}")
-    st.divider()
+    st.markdown("<hr style='border: none; border-top: 1px solid #AAAAAA; margin: 2px 0 16px;'>", unsafe_allow_html=True)
 
     with st.expander("📂 Data Source", expanded=False):
         st.caption(f"`{DATA_PATH}`")
@@ -363,11 +362,12 @@ with tab_forecast:
     with cols[3]:
         st.markdown(f"""
         <div class="fc-mape-card">
-            <div class="fc-mape-label">Walk-Forward MAPE (H8)</div>
+            <div class="fc-mape-label">Walk-Forward MAPE</div>
             <div class="fc-mape-value">{prod_pred['mape']:.1f}%</div>
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
     # Chart
     df_chart_train = df_prod[(df_prod['date'] >= TRAIN_START) & (df_prod['date'] <= TRAIN_END)].copy()
 
@@ -417,19 +417,37 @@ with tab_forecast:
     )
 
     fig.update_layout(
-        title=f"H8 Forecast — {selected_product}",
-        xaxis_title="Date", yaxis_title="Sales", template="plotly_dark",
+        title=dict(text=f"Rolling Forecast — {selected_product}", x=0.4, font=dict(size=20)),
+        xaxis_title=dict(text="Date", font=dict(size=13)),
+        yaxis_title=dict(text="Sales", font=dict(size=13)),
+        template="plotly_dark",
         hovermode="x unified", legend=dict(orientation="h", y=1.08),
-        height=500, margin=dict(t=60, b=40)
+        height=500, margin=dict(t=80, b=40)
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Tabel Peramalan</h3>", unsafe_allow_html=True)
+
+    table_rows = []
+    for j, dt in enumerate(PRED_DATES):
+        fcast = pv[j]
+        act = av[j]
+        tgt = bv[j]
+        ape = abs((act - fcast) / act) * 100 if act != 0 and not np.isnan(act) and not np.isnan(fcast) else float('nan')
+        table_rows.append({
+            'Month': dt.strftime('%b %Y'),
+            'Forecast': f"{fcast:,.0f}",
+            'Actual': f"{act:,.0f}",
+            'Sales Target': f"{tgt:,.0f}",
+            'Error (%)': f"{ape:.1f}" if not np.isnan(ape) else "—",
+        })
+    st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+
 # ── CAPACITY TAB ────────────────────────────────────────────────────────────────
 with tab_capacity:
-    st.subheader("🏭 Production Capacity Planning")
-    st.markdown("Total forecasted volume across **all products** vs. monthly capacity for H8 (Oct–Dec 2025). Each product uses its **best-performing model** from the notebook.")
-
+    st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Rekomendasi Perencanaan Shift Produksi</h3>", unsafe_allow_html=True)
     cap_data = []
     for pi, dt in enumerate(PRED_DATES):
         total = sum(predictions[p]['pred_vals'][pi] for p in products_sorted)
@@ -455,20 +473,20 @@ with tab_capacity:
                     <div class="perf-sub">Capacity: {row['capacity']:,.0f}</div>
                 </div>""", unsafe_allow_html=True)
 
-        with st.expander("📋 Capacity Details"):
-            st.dataframe(capacity_df.style.format({
-                "total_forecast": "{:,.0f}",
-                "capacity": "{:,.0f}",
-                "excess": "{:,.0f}",
-                "extra_shifts": "{:,d}",
-            }), use_container_width=True, hide_index=True)
+        st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Tabel Kapasitas</h3>", unsafe_allow_html=True)
+        st.dataframe(capacity_df.style.format({
+            "total_forecast": "{:,.0f}",
+            "capacity": "{:,.0f}",
+            "excess": "{:,.0f}",
+            "extra_shifts": "{:,d}",
+        }), use_container_width=True, hide_index=True)
     else:
         st.info("No prediction data available.")
 
 # ── PERFORMANCE TAB ─────────────────────────────────────────────────────────────
 with tab_performance:
-    st.subheader("📈 Best Model Performance per Product (H8: Oct–Dec 2025)")
-    st.markdown("Each product uses the single best model identified by walk-forward cross-validation in the notebook.")
+    st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Performa Model Keseluruhan</h3>", unsafe_allow_html=True)
 
     cols = st.columns(2)
     for pi, prod in enumerate(products_sorted):
@@ -483,7 +501,8 @@ with tab_performance:
                 <div class="perf-sub">MAE: {pd_pred['mae']:,.0f} | RMSE: {pd_pred['rmse']:,.0f}</div>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Tabel Perbandingan Model</h3>", unsafe_allow_html=True)
     comp_rows = []
     for prod in products_sorted:
         pd_pred = predictions[prod]
@@ -495,8 +514,7 @@ with tab_performance:
             'MAE': f"{pd_pred['mae']:,.0f}",
             'RMSE': f"{pd_pred['rmse']:,.0f}",
         })
-    if comp_rows:
-        st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(comp_rows), use_container_width=True, hide_index=True)
 
     with st.expander("📐 Training Configuration"):
         st.markdown(f"""
