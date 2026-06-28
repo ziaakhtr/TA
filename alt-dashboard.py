@@ -453,7 +453,7 @@ with tab_capacity:
         total = sum(predictions[p]['pred_vals'][pi] for p in products_sorted)
         cap_data.append({'date': dt, 'total_forecast': total})
     capacity_df = pd.DataFrame(cap_data)
-    capacity_df['capacity'] = 1320000 * (5 / 60)
+    capacity_df['capacity'] = 1320000 * (4 / 60) #Kapasitas maks dikalikan konstanta fraksi SKU
     shift_cap = 22000
     capacity_df['excess'] = (capacity_df['total_forecast'] - capacity_df['capacity']).clip(lower=0)
     capacity_df['extra_shifts'] = np.ceil(capacity_df['excess'].fillna(0) / shift_cap).astype(int)

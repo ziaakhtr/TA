@@ -11,9 +11,9 @@
     "best_model": "RandomForest",
     "type": "sklearn",
     "safe_name": "MU_302_50Kg",
-    "mape": 19.028166712859363,
-    "mae": 80066.32612700276,
-    "rmse": 93099.5354261956
+    "mape": 19.028166712859353,
+    "mae": 80066.32612700273,
+    "rmse": 93099.53542619558
   },
   "MU-380-40KG": {
     "best_model": "Lasso",
