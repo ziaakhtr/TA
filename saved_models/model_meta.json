@@ -3,17 +3,17 @@
     "best_model": "RandomForest",
     "type": "sklearn",
     "safe_name": "MU_250_40Kg",
-    "mape": 11.08108886404647,
-    "mae": 6570.136331034683,
+    "mape": 11.081088864046462,
+    "mae": 6570.1363310346815,
     "rmse": 7985.0255519385555
   },
   "MU-302-50Kg": {
     "best_model": "RandomForest",
     "type": "sklearn",
     "safe_name": "MU_302_50Kg",
-    "mape": 19.028166712859353,
-    "mae": 80066.32612700273,
-    "rmse": 93099.53542619558
+    "mape": 19.028166712859363,
+    "mae": 80066.32612700276,
+    "rmse": 93099.5354261956
   },
   "MU-380-40KG": {
     "best_model": "Lasso",

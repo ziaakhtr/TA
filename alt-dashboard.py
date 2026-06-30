@@ -245,6 +245,24 @@ if st.session_state.get('app_page', 'home') == 'home':
         <div class="hero-subtitle">PT CIPTA MORTAR UTAMA</div>
     </div>
     """, unsafe_allow_html=True)
+    st.markdown("<hr style='border: 1px solid #2a2d45; margin: 20px 0'>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color:#f0f4ff; text-align:center; font-weight:600;'>Upload Inventory Data (CSV)</h4>", unsafe_allow_html=True)
+    st.caption("Columns: <b>product</b>, <b>current_inventory</b>, <b>min_inventory</b>", unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("Choose inventory CSV", type=["csv"], label_visibility="collapsed", key="inventory_csv")
+    if uploaded_file is not None:
+        try:
+            inv_df = pd.read_csv(uploaded_file)
+            required = ['product', 'current_inventory', 'min_inventory']
+            if all(c in inv_df.columns for c in required):
+                st.session_state.inventory_df = inv_df
+                st.dataframe(inv_df, use_container_width=True, hide_index=True)
+            else:
+                st.error(f"CSV must have columns: {', '.join(required)}")
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
+    elif st.session_state.get('inventory_df') is not None:
+        st.dataframe(st.session_state.inventory_df, use_container_width=True, hide_index=True)
+
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         if st.button("Login", use_container_width=True, type="primary"):
@@ -274,6 +292,8 @@ if predictions is None:
 # ── Session state ───────────────────────────────────────────────────────────────
 if 'app_page' not in st.session_state:
     st.session_state.app_page = 'home'
+if 'inventory_df' not in st.session_state:
+    st.session_state.inventory_df = None
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -448,39 +468,115 @@ with tab_forecast:
 # ── CAPACITY TAB ────────────────────────────────────────────────────────────────
 with tab_capacity:
     st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Rekomendasi Perencanaan Shift Produksi</h3>", unsafe_allow_html=True)
+
+    inv_df = st.session_state.get('inventory_df')
+    inv_lookup = dict(zip(inv_df['product'], inv_df['current_inventory'])) if inv_df is not None else {}
+    min_lookup = dict(zip(inv_df['product'], inv_df['min_inventory'])) if inv_df is not None else {}
+
+    cur_inv = {p: inv_lookup.get(p, 0) for p in products_sorted}
+    min_inv = {p: min_lookup.get(p, 0) for p in products_sorted}
+
+    missing = [p for p in products_sorted if p not in inv_lookup and inv_df is not None]
+    if missing:
+        st.warning(f"Products missing from inventory CSV (defaulting to 0): {', '.join(missing)}")
+
+    MAX_EXTRA_SHIFTS = 24
+    shift_cap = round(22000)
+    base_capacity = round(1320000 * 0.377)
+
     cap_data = []
+    inv_detail_rows = []
+
     for pi, dt in enumerate(PRED_DATES):
-        total = sum(predictions[p]['pred_vals'][pi] for p in products_sorted)
-        cap_data.append({'date': dt, 'total_forecast': total})
+        total_forecast = 0
+        total_backlog = 0
+        prod_details = []
+
+        for p in products_sorted:
+            fcast = predictions[p]['pred_vals'][pi]
+            inv = cur_inv[p]
+            min_inv_val = min_inv[p]
+
+            refill = max(0, min_inv_val - inv)
+            effective_i = fcast + refill
+            total_forecast += fcast
+            total_backlog += refill
+            prod_details.append({'product': p, 'forecast': fcast, 'start_inv': inv, 'min_inv': min_inv_val, 'refill': refill, 'effective_demand': effective_i})
+
+        total_effective = total_forecast + total_backlog
+        excess = max(0, total_effective - base_capacity)
+        extra_shifts_raw = int(np.ceil(excess / shift_cap)) if excess > 0 else 0
+        extra_shifts = min(MAX_EXTRA_SHIFTS, extra_shifts_raw)
+        capped_excess = extra_shifts * shift_cap
+        total_production = base_capacity + capped_excess
+        hit_cap = extra_shifts_raw > MAX_EXTRA_SHIFTS
+
+        safety_consumed = 0
+        for d in prod_details:
+            share = d['effective_demand'] / total_effective if total_effective > 0 else 0
+            allocated = total_production * share
+            d['allocated'] = allocated
+            d['end_inv'] = d['start_inv'] - d['forecast'] + allocated
+            cur_inv[d['product']] = d['end_inv']
+            consumed = max(0, d['min_inv'] - d['end_inv'])
+            d['safety_used'] = consumed
+            safety_consumed += consumed
+            if d['end_inv'] >= d['min_inv']:
+                d['status'] = '✅ OK'
+            elif d['end_inv'] >= 0:
+                d['status'] = '⚠️ Below Min'
+            else:
+                d['status'] = '🔴 Depleted'
+
+        cap_data.append({'date': dt, 'total_forecast': total_forecast, 'total_backlog': total_backlog, 'effective_demand': total_effective, 'capacity': base_capacity, 'excess': excess, 'extra_shifts_raw': extra_shifts_raw, 'extra_shifts': extra_shifts, 'total_production': total_production, 'hit_cap': hit_cap, 'safety_consumed': safety_consumed})
+
+        for d in prod_details:
+            inv_detail_rows.append({'Month': dt.strftime('%b %Y'), 'Product': d['product'], 'Start Inv': f"{d['start_inv']:,.0f}", 'Min Inv': f"{d['min_inv']:,.0f}", 'Forecast': f"{d['forecast']:,.0f}", 'Backlog': f"{d['refill']:,.0f}", 'Allocated Prod': f"{d['allocated']:,.0f}", 'End Inv': f"{d['end_inv']:,.0f}",  'Status': d['status']})
+
     capacity_df = pd.DataFrame(cap_data)
-    capacity_df['capacity'] = 1320000 * (4 / 60) #Kapasitas maks dikalikan konstanta fraksi SKU
-    shift_cap = 22000
-    capacity_df['excess'] = (capacity_df['total_forecast'] - capacity_df['capacity']).clip(lower=0)
-    capacity_df['extra_shifts'] = np.ceil(capacity_df['excess'].fillna(0) / shift_cap).astype(int)
 
     if not capacity_df.empty:
         cols = st.columns(len(capacity_df))
         for idx, row in capacity_df.iterrows():
             with cols[idx]:
                 num_shifts = row['extra_shifts']
-                needed = f"{num_shifts} extra shift{'s' if num_shifts > 1 else ''} ⚠️" if num_shifts > 0 else "Within capacity ✅"
-                color = "#f5d17c" if num_shifts > 0 else "#7cf5a5"
+                if num_shifts > 0:
+                    text = f"{num_shifts} extra shift{'s' if num_shifts > 1 else ''} ⚠️"
+                    if row['hit_cap']:
+                        text += "<br><span style='font-size:0.7rem;color:#f5d17c'>(max 24)</span>"
+                    color = "#f5d17c"
+                else:
+                    text = "Within capacity ✅"
+                    color = "#7cf5a5"
+                safety_text = f"<div class='perf-sub'>Safety Stock Used: {row['safety_consumed']:,.0f}</div>" if row['safety_consumed'] > 0 else ""
                 st.markdown(f"""
                 <div class="perf-card">
                     <div class="perf-label">{row['date'].strftime('%B %Y')}</div>
-                    <div class="perf-value" style="color:{color}">{needed}</div>
-                    <div class="perf-sub">Total Forecast: {row['total_forecast']:,.0f}</div>
+                    <div class="perf-value" style="color:{color}">{text}</div>
+                    <div class="perf-sub">Forecast: {row['total_forecast']:,.0f}</div>
+                    <div class="perf-sub">Effective Demand: {row['effective_demand']:,.0f}</div>
                     <div class="perf-sub">Capacity: {row['capacity']:,.0f}</div>
+                    <div class="perf-sub">Total Production: {row['total_production']:,.0f}</div>
+                    {safety_text}
                 </div>""", unsafe_allow_html=True)
 
         st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
         st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Tabel Kapasitas</h3>", unsafe_allow_html=True)
         st.dataframe(capacity_df.style.format({
             "total_forecast": "{:,.0f}",
+            "total_backlog": "{:,.0f}",
+            "effective_demand": "{:,.0f}",
             "capacity": "{:,.0f}",
             "excess": "{:,.0f}",
             "extra_shifts": "{:,d}",
+            "total_production": "{:,.0f}",
+            "safety_consumed": "{:,.0f}",
         }), use_container_width=True, hide_index=True)
+
+        st.markdown("<hr style='border: none; border-top: 1px solid #2a2d45; margin: 24px 0 16px;'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center; color: #f0f4ff; font-size: 1.25rem; font-weight: 700; margin-bottom: 16px;'>Tabel Inventory per Produk</h3>", unsafe_allow_html=True)
+        inv_detail_df = pd.DataFrame(inv_detail_rows)
+        st.dataframe(inv_detail_df, use_container_width=True, hide_index=True)
     else:
         st.info("No prediction data available.")
 
