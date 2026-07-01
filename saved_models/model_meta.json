@@ -1,11 +1,11 @@
 {
   "MU-250-40Kg": {
-    "best_model": "RandomForest",
+    "best_model": "XGBoost",
     "type": "sklearn",
     "safe_name": "MU_250_40Kg",
-    "mape": 11.081088864046462,
-    "mae": 6570.1363310346815,
-    "rmse": 7985.0255519385555
+    "mape": 7.5850565292381935,
+    "mae": 4412.647135416667,
+    "rmse": 4976.858552400624
   },
   "MU-302-50Kg": {
     "best_model": "RandomForest",
@@ -16,12 +16,12 @@
     "rmse": 93099.5354261956
   },
   "MU-380-40KG": {
-    "best_model": "Lasso",
+    "best_model": "RandomForest",
     "type": "sklearn",
     "safe_name": "MU_380_40KG",
-    "mape": 16.663898138220855,
-    "mae": 93487.28306362357,
-    "rmse": 93857.58407393548
+    "mape": 12.103833551724708,
+    "mae": 68436.70492412253,
+    "rmse": 71742.82588301157
   },
   "MU-480-Combined": {
     "best_model": "XGBoost",
